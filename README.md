@@ -6,14 +6,40 @@ The platform integrates edge sensing, local machine learning computer vision, ta
 
 ---
 
+## ⚡ Quick Start: Running the Project
+
+To run the entire system locally, open two terminals from the project root (`krishi-edge`):
+
+### 1. Terminal 1: Start the Backend Gateway (Port 5000)
+```powershell
+npm run backend
+```
+> Starts the Express gateway on `http://0.0.0.0:5000` for ESP32 telemetry ingestion, SHA-256 condition passport verification, and ESP32-CAM stream proxying.
+
+### 2. Terminal 2: Start the Operator Dashboard (Port 3000)
+```powershell
+npm run frontend
+```
+> Starts the Vite React dashboard on `http://localhost:3000` with the redesigned dark-mode UI.
+
+### 3. Terminal 3 (Optional): Start the ML Fruit Freshness Service (Port 8000)
+```powershell
+cd ml_model
+pip install -r ml_requirements.txt
+python serve_model.py
+```
+> Runs the FastAPI fruit freshness inference service on `http://0.0.0.0:8000`. If this service is offline, the backend automatically uses intelligent local fallback calculations.
+
+---
+
 ## Key Features
 
+- **HCI-Engineered Dark Mode Dashboard**: Streamlined React 18 interface following WCAG 2.1 AA contrast standards (`#0F1117` base, `#1A1D27` elevated cards), progressive disclosure, and zero-flicker live MJPEG video playback.
 - **Edge Condition Engine**: ESP32 microcontroller with DHT11 temperature/humidity sensing, high-precision DS3231 RTC timekeeping, and on-board SSD1306 OLED diagnostics.
 - **Cryptographic Produce Passport**: Continuous SHA-256 hash-chained telemetry records persisted to LittleFS flash memory, guaranteeing immutable audit trails and tamper detection across transit.
-- **On-Device & Service-Based Computer Vision**: MobileNetV2-based edge classification for visual crop freshness evaluation (apple, banana, orange) deployed on ESP32-CAM and supported by a FastAPI inference microservice.
+- **On-Device & Service-Based Computer Vision**: MobileNetV2-based edge classification for visual crop freshness evaluation (apple, banana, orange) trained on the Kaggle Fruit Freshness Dataset v1, deployable on ESP32-CAM (Int8 quantized) and served via FastAPI.
 - **Flexible Data Uplink**: Dual-mode ingestion supporting direct USB Serial COM port streaming (for offline/tethered setups) and HTTP/REST telemetry with Server-Sent Events (SSE) synchronization.
 - **Multi-Channel Alert System**: Automated excursion notifications dispatched via Telegram Bot, HTTP Webhooks, and SMS whenever storage limits are breached.
-- **Interactive Web Dashboard**: React-based operator interface providing cold-chain status, cryptographic verification audits, live MJPEG video streams, solar battery load management, and an interactive NER geographic deployment map.
 
 ---
 
