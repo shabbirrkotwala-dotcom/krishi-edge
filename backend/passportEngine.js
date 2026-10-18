@@ -1,15 +1,24 @@
 const crypto = require("crypto");
 
 /**
- * Calculates SHA-256 hash matching the ESP32 mbedtls implementation:
- * SHA256(recordNumber|timestamp|temperature|humidity|state|action|confidence|previousHash)
+ * Calculates SHA-256 hash matching the patent-aligned ESP32 mbedtls implementation:
+ * SHA256(recordNumber|timestamp|temp|hum|mkt_value|ethylene_ppm|pdm_kurtosis|state|action|confidence|previousHash)
  */
 function calculateSHA256(recordData) {
+  const tempStr = Number(recordData.temperature !== undefined ? recordData.temperature : 0).toFixed(1);
+  const humStr = Number(recordData.humidity !== undefined ? recordData.humidity : 0).toFixed(1);
+  const mktStr = Number(recordData.mkt_value !== undefined ? recordData.mkt_value : recordData.temperature || 0).toFixed(2);
+  const ethStr = Number(recordData.ethylene_ppm !== undefined ? recordData.ethylene_ppm : 0.0).toFixed(2);
+  const pdmStr = Number(recordData.pdm_kurtosis !== undefined ? recordData.pdm_kurtosis : 3.0).toFixed(2);
+
   const recordString =
     `${recordData.recordNumber}|` +
     `${recordData.timestamp}|` +
-    `${Number(recordData.temperature).toFixed(1)}|` +
-    `${Number(recordData.humidity).toFixed(1)}|` +
+    `${tempStr}|` +
+    `${humStr}|` +
+    `${mktStr}|` +
+    `${ethStr}|` +
+    `${pdmStr}|` +
     `${recordData.state}|` +
     `${recordData.action}|` +
     `${recordData.confidence}|` +
@@ -20,6 +29,23 @@ function calculateSHA256(recordData) {
     .update(recordString)
     .digest("hex")
     .toUpperCase();
+}
+
+/**
+ * Calculates Arrhenius Mean Kinetic Temperature (MKT)
+ * Delta_H / R = 83.144 kJ/mol / 0.0083144 kJ/(mol*K) = 10000.0 K
+ * MKT = (Delta_H / R) / ( -ln( (1/n) * sum( exp(-Delta_H / (R * T_k)) ) ) )
+ */
+function calculateMKT(tempArrayC, deltaH_over_R = 10000.0) {
+  if (!tempArrayC || tempArrayC.length === 0) return 4.0;
+  let sumExp = 0.0;
+  for (let i = 0; i < tempArrayC.length; i++) {
+    const kelvin = tempArrayC[i] + 273.15;
+    sumExp += Math.exp(-deltaH_over_R / kelvin);
+  }
+  const avgExp = sumExp / tempArrayC.length;
+  const mktKelvin = deltaH_over_R / (-Math.log(avgExp));
+  return +(mktKelvin - 273.15).toFixed(2);
 }
 
 /**
@@ -135,6 +161,7 @@ function verifyPassportChain(records) {
 
 module.exports = {
   calculateSHA256,
+  calculateMKT,
   evaluateConditionState,
   verifyPassportChain,
 };

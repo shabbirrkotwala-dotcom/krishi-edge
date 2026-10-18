@@ -23,6 +23,14 @@ except ImportError:
         TFLITE_AVAILABLE = False
         print("WARNING: Neither tensorflow nor tflite_runtime found. Will run in mock mode.")
 
+# Check if OpenCV is available for CLAHE preprocessing
+try:
+    import cv2
+    OPENCV_AVAILABLE = True
+except ImportError:
+    OPENCV_AVAILABLE = False
+    print("NOTICE: opencv-python not found. Falling back to standard image preprocessing.")
+
 # --- Configuration ---
 MODEL_PATH_INT8 = 'models/agricold_freshness_int8.tflite'
 MODEL_PATH_FLOAT = 'models/agricold_freshness.tflite'
@@ -100,16 +108,42 @@ app.add_middleware(
 class PredictRequest(BaseModel):
     image_url: str = None
 
+def apply_clahe(image: Image.Image) -> Image.Image:
+    """Applies Contrast Limited Adaptive Histogram Equalization (CLAHE)
+    to enhance produce features in low-light / cold storage conditions."""
+    if not OPENCV_AVAILABLE:
+        return image
+    try:
+        img_np = np.array(image)
+        if len(img_np.shape) == 2:
+            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+            enhanced = clahe.apply(img_np)
+            return Image.fromarray(enhanced).convert('RGB')
+        elif img_np.shape[2] == 3:
+            lab = cv2.cvtColor(img_np, cv2.COLOR_RGB2LAB)
+            l, a, b = cv2.split(lab)
+            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+            cl = clahe.apply(l)
+            enhanced_lab = cv2.merge((cl, a, b))
+            enhanced_rgb = cv2.cvtColor(enhanced_lab, cv2.COLOR_LAB2RGB)
+            return Image.fromarray(enhanced_rgb)
+    except Exception as e:
+        print(f"CLAHE preprocessing notice: {e}")
+    return image
+
 def preprocess_image(image: Image.Image) -> np.ndarray:
-    """Preprocess image for MobileNetV2"""
-    # Resize to 96x96
+    """Preprocess image with CLAHE low-light enhancement and MobileNet normalization"""
+    # 1. Apply CLAHE low-light enhancement
+    image = apply_clahe(image)
+
+    # 2. Resize to 96x96
     image = image.resize(INPUT_SHAPE)
     # Convert to RGB if needed
     if image.mode != 'RGB':
         image = image.convert('RGB')
     
     img_array = np.array(image, dtype=np.float32)
-    # Normalize to [-1, 1] for MobileNetV2
+    # Normalize to [-1, 1] for MobileNet
     img_array = (img_array / 127.5) - 1.0
     
     # Add batch dimension

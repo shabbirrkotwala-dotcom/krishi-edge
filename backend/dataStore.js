@@ -96,6 +96,9 @@ function initSamplePassports() {
 
     const temp = +(3.8 + (i % 3) * 0.3).toFixed(1);
     const humidity = +(85.0 + i * 0.4).toFixed(1);
+    const mkt_value = +(temp + 0.15).toFixed(2);
+    const ethylene_ppm = +(0.25 + (i * 0.05)).toFixed(2);
+    const pdm_kurtosis = +(3.02 + (i % 2) * 0.12).toFixed(2);
     const state = "NORMAL";
     const action = "CONTINUE";
     const confidence = 95;
@@ -105,6 +108,9 @@ function initSamplePassports() {
       timestamp: timeStr,
       temperature: temp,
       humidity: humidity,
+      mkt_value,
+      ethylene_ppm,
+      pdm_kurtosis,
       state,
       action,
       confidence,
@@ -171,9 +177,9 @@ async function appendPassportRecord(unitId, recordData) {
   const humidity = parseFloat(recordData.humidity);
 
   const evalResult = evaluateConditionState(temp, humidity);
-  const state = recordData.state || evalResult.state;
-  const action = recordData.action || evalResult.action;
-  const confidence = recordData.confidence || evalResult.confidence;
+  const mkt = recordData.mkt_value !== undefined ? parseFloat(recordData.mkt_value) : +(temp + 0.15).toFixed(2);
+  const ethylene = recordData.ethylene_ppm !== undefined ? parseFloat(recordData.ethylene_ppm) : 0.25;
+  const kurtosis = recordData.pdm_kurtosis !== undefined ? parseFloat(recordData.pdm_kurtosis) : 3.05;
 
   const entry = {
     unitId,
@@ -182,6 +188,9 @@ async function appendPassportRecord(unitId, recordData) {
     timestamp: timestamp || recordData.timestamp || new Date().toISOString().replace("T", " ").substring(0, 19),
     temperature: temp,
     humidity: humidity,
+    mkt_value: mkt,
+    ethylene_ppm: ethylene,
+    pdm_kurtosis: kurtosis,
     state,
     action,
     confidence: Number(confidence),
@@ -198,6 +207,9 @@ async function appendPassportRecord(unitId, recordData) {
         {
           temp,
           humidity,
+          mkt_value: mkt,
+          ethylene_ppm: ethylene,
+          pdm_kurtosis: kurtosis,
           status: state === "NORMAL" ? "Healthy" : state === "WARNING" ? "Warning" : "Critical",
           lastSeen: new Date()
         },
@@ -215,6 +227,9 @@ async function appendPassportRecord(unitId, recordData) {
   if (u) {
     u.temp = temp;
     u.humidity = humidity;
+    u.mkt_value = mkt;
+    u.ethylene_ppm = ethylene;
+    u.pdm_kurtosis = kurtosis;
     u.status = state === "NORMAL" ? "Healthy" : state === "WARNING" ? "Warning" : "Critical";
     u.lastSeen = new Date().toISOString();
   }

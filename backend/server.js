@@ -81,6 +81,9 @@ app.post("/api/telemetry", async (req, res) => {
     unitId = "CS-101",
     temperature,
     humidity,
+    mkt_value,
+    ethylene_ppm,
+    pdm_kurtosis,
     state,
     action,
     confidence,
@@ -104,19 +107,26 @@ app.post("/api/telemetry", async (req, res) => {
     });
   }
 
+  const mktNum = mkt_value !== undefined ? Number(mkt_value) : +(tempNum + 0.15).toFixed(2);
+  const ethNum = ethylene_ppm !== undefined ? Number(ethylene_ppm) : 0.25;
+  const pdmNum = pdm_kurtosis !== undefined ? Number(pdm_kurtosis) : 3.05;
+
   const recNum = Number(rawRecord !== undefined ? rawRecord : (recordNumber !== undefined ? recordNumber : Date.now()));
   const confNum = Number(confidence !== undefined ? confidence : 95);
   const stateStr = String(state || (tempNum > 30.0 ? "WARNING" : "NORMAL"));
   const actionStr = String(action || (stateStr === "WARNING" ? "VERIFY" : "CONTINUE"));
 
   // Update rolling history for ML feature computation
-  recordSensorReading(unitId, { temperature: tempNum, humidity: humNum, power });
+  recordSensorReading(unitId, { temperature: tempNum, humidity: humNum, power, mkt_value: mktNum, ethylene_ppm: ethNum, pdm_kurtosis: pdmNum });
 
   const recordData = await appendPassportRecord(unitId, {
     recordNumber: recNum,
     timestamp,
     temperature: tempNum,
     humidity: humNum,
+    mkt_value: mktNum,
+    ethylene_ppm: ethNum,
+    pdm_kurtosis: pdmNum,
     state: stateStr,
     action: actionStr,
     confidence: confNum,
@@ -131,6 +141,9 @@ app.post("/api/telemetry", async (req, res) => {
   latestTelemetry = {
     temperature: tempNum,
     humidity: humNum,
+    mkt_value: mktNum,
+    ethylene_ppm: ethNum,
+    pdm_kurtosis: pdmNum,
     state: stateStr,
     action: actionStr,
     confidence: confNum,
@@ -374,13 +387,34 @@ app.post("/api/notifications/test", async (req, res) => {
 // TELEMETRY SIMULATOR ROUTE
 // =====================================================
 app.post("/api/simulate/telemetry", async (req, res) => {
-  const { unitId = "CS-101", temp = 28.5, humidity = 82.0 } = req.body;
+  const {
+    unitId = "CS-101",
+    temp = 28.5,
+    humidity = 82.0,
+    mkt_value,
+    ethylene_ppm,
+    pdm_kurtosis
+  } = req.body;
 
-  recordSensorReading(unitId, { temperature: temp, humidity });
+  const tempNum = parseFloat(temp);
+  const mkt = mkt_value !== undefined ? parseFloat(mkt_value) : +(tempNum + 0.15).toFixed(2);
+  const ethylene = ethylene_ppm !== undefined ? parseFloat(ethylene_ppm) : 0.25;
+  const kurtosis = pdm_kurtosis !== undefined ? parseFloat(pdm_kurtosis) : 3.05;
+
+  recordSensorReading(unitId, {
+    temperature: tempNum,
+    humidity: parseFloat(humidity),
+    mkt_value: mkt,
+    ethylene_ppm: ethylene,
+    pdm_kurtosis: kurtosis
+  });
 
   const record = await appendPassportRecord(unitId, {
-    temperature: temp,
-    humidity: humidity,
+    temperature: tempNum,
+    humidity: parseFloat(humidity),
+    mkt_value: mkt,
+    ethylene_ppm: ethylene,
+    pdm_kurtosis: kurtosis,
   });
 
   const computedHash = calculateSHA256(record);

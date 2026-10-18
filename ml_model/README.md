@@ -45,7 +45,7 @@ pip install -r requirements.txt
 python train_model.py
 ```
 
-Two-phase training: a classifier head on top of a frozen MobileNetV2 (alpha=0.35, the smallest official width multiplier — chosen for ESP32-CAM's RAM budget), then fine-tuning the top backbone layers. Includes augmentation (brightness/contrast variation especially, since cold-storage lighting differs from the dataset's daylight photos). At the end of training, a classification report and confusion matrix will be generated.
+Two-phase training: a classifier head on top of a frozen MobileNetV3-Small backbone optimized for microcontroller execution with hard-swish non-linearities and squeeze-and-excitation blocks, then fine-tuning the top layers. Includes CLAHE (Contrast Limited Adaptive Histogram Equalization) preprocessing and data augmentation to handle extreme low-light chamber conditions. At the end of training, a classification report and confusion matrix will be generated.
 
 Outputs in `models/`:
 - `agricold_freshness.h5` — full Keras model

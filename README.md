@@ -163,7 +163,19 @@ krishi-edge/
 | Camera Clock Lines | GPIO 25 (VSYNC), 23 (HREF), 22 (PCLK) | Sync and pixel clock |
 | Serial Programming | U0TXD (GPIO 1), U0RXD (GPIO 3), GPIO 0 to GND | Ground GPIO 0 during boot to flash |
 
-### 3. Energy & Cooling Hardware
+### 3. Sensors, Actuators & Predictive Maintenance Hardware
+
+| Component | Interface / Pins | Function & Patent Specification |
+| :--- | :--- | :--- |
+| DHT11 Temp & RH Sensor | GPIO 4 | Real-time ambient chamber temperature & relative humidity |
+| DS3231 Precision RTC | I2C (GPIO 21 SDA, 22 SCL) | Battery-backed immutable timekeeping for cryptographic logs |
+| SSD1306 128x64 OLED | I2C (0x3C on GPIO 21/22) | Real-time diagnostics: Temp, MKT, Kurtosis, FFT Peak, iForest score |
+| NDIR Optical Ethylene Sensor | UART2 (GPIO 16 RX, 17 TX) | Optical non-dispersive infrared measurement with 0.1 ppm resolution |
+| MPU6050 3-Axis Accelerometer | I2C (0x68 on GPIO 21/22) | High-speed 1000 Hz Z-axis vibration sampling for Kurtosis & FFT |
+| Exhaust Ventilation Relay | GPIO 18 (Active HIGH) | Automatically flushes chamber when ethylene > 1.0 ppm in preservation mode |
+| Ethylene Dosing Valve Relay | GPIO 19 (PWM / Solenoid) | Controlled chamber ripening capped strictly at 100 ppm (FSSAI legal limit) |
+
+### 4. Energy & Cooling Hardware
 
 - **Solar Array**: 40W monocrystalline solar panel, tilt-adjustable.
 - **Charge Controller**: 12V 10A MPPT controller with low-voltage disconnect.
@@ -172,16 +184,16 @@ krishi-edge/
 
 ---
 
-## Cryptographic Produce Passport
+## Cryptographic Produce Passport (A.G.R.I Patent Architecture)
 
-To establish non-repudiation and prevent fraud across cold-chain handoffs, every sensor reading is hashed sequentially using SHA-256.
+To establish non-repudiation and prevent fraud across cold-chain handoffs, every sensor reading cryptographically anchors biochemical, mechanical, and kinetic data into an immutable sequential SHA-256 ledger.
 
-### Record Construction
+### Record Construction (11-Field Immutable Payload)
 
 Each record consists of the following fields:
 
 ```
-Payload = recordNumber | timestamp | temperature | humidity | state | action | confidence | previousHash
+Payload = recordNumber | timestamp | temp | hum | mkt_value | ethylene_ppm | pdm_kurtosis | state | action | confidence | previousHash
 ```
 
 The current block hash is computed as:
@@ -190,18 +202,25 @@ The current block hash is computed as:
 currentHash = SHA-256(Payload)
 ```
 
+- **mkt_value**: Arrhenius Mean Kinetic Temperature computed dynamically over a rolling Kelvin buffer:
+  $$MKT = \frac{\Delta H / R}{-\ln\left(\frac{1}{N}\sum_{i=1}^{N}\exp\left(-\frac{\Delta H / R}{T_i}\right)\right)}$$
+  *(Default activation energy $\Delta H = 83.144\text{ kJ/mol}$, $\Delta H / R = 10000.0\text{ K}$)*.
+- **ethylene_ppm**: NDIR gas concentration tracking fruit respiration and ripening.
+- **pdm_kurtosis**: Statistical fourth standardized moment ($\beta_2$) of 1000 Hz compressor vibration acceleration window. Gaussian baseline is ~3.0; bearing shock waves exceed 4.5.
 - **Genesis Record**: Uses a 64-character zero string (`0000...0000`) as `previousHash`.
 - **Subsequent Records**: Must reference the exact `currentHash` of the immediately preceding record.
-- **Integrity Validation**: If any historical temperature record or timestamp is modified, all downstream hashes in the ledger fail validation.
+- **Integrity Validation**: If any historical temperature, ethylene reading, vibration metric, or timestamp is modified, all downstream hashes in the ledger fail validation.
 
 ### Condition Evaluation Rules
 
-| Temperature Range | Condition State | Dispatch Action | Confidence | Excursion Rule |
+| Metric Condition | Condition State | Dispatch Action | Confidence | Excursion Rule |
 | :--- | :--- | :--- | :--- | :--- |
-| `< 2.0°C` | `FREEZE_RISK` | `HOLD_VERIFY` | 95% | Immediate flag |
-| `2.0°C - 8.0°C` | `NORMAL` | `CONTINUE` | 95% | Nominal safe cold-chain band |
-| `> 8.0°C` | `WARNING` | `VERIFY` | 85% | Active excursion under 2 minutes |
-| `> 8.0°C` | `HOLD` | `HOLD_VERIFY` | 95% | Sustained excursion 2 minutes or longer |
+| `MKT < 2.0°C` | `FREEZE_RISK` | `HOLD_VERIFY` | 95% | Immediate flag |
+| `2.0°C <= MKT <= 8.0°C` | `NORMAL` | `CONTINUE` | 95% | Nominal safe cold-chain band |
+| `MKT > 8.0°C` | `WARNING` | `VERIFY` | 85% | Active excursion under 2 minutes |
+| `MKT > 8.0°C` | `HOLD` | `HOLD_VERIFY` | 95% | Sustained excursion 2 minutes or longer |
+| `pdm_kurtosis > 4.5` | `WARNING` | `VERIFY` | 90% | Mechanical bearing/valve shock detected |
+| `ethylene > 1.0 ppm` (Preservation) | `EXHAUST_ON` | `VENTILATE` | 95% | Active relay flushing of chamber |
 
 ---
 
@@ -214,11 +233,11 @@ The `ml_model/` subsystem runs vision-based freshness assessment on 6 produce ca
 
 ### Pipeline Stages
 
-1. **Dataset Preparation**: `prepare_dataset.py` formats Kaggle produce freshness datasets into train and validation subsets.
-2. **Model Training**: `train_model.py` uses MobileNetV2 (`alpha=0.35`) with transfer learning, followed by INT8 post-training quantization to satisfy the ESP32-CAM memory footprint.
-3. **Firmware Export**: `convert_to_c_array.py` creates `model_data.h` containing the quantized model as a static C byte array.
-4. **On-Device Execution**: `esp32cam_inference.ino` runs TensorFlow Lite for Microcontrollers, wakes periodically from deep sleep, performs inference, publishes results via MQTT, and returns to low-power sleep.
-5. **Inference Microservice**: `serve_model.py` provides an HTTP FastAPI alternative for centralized inference over local network camera streams.
+1. **Dataset Preparation**: `prepare_dataset.py` formats the Kaggle Fruit Freshness Dataset v1 into balanced training and test subsets.
+2. **CLAHE Low-Light Enhancement**: Contrast Limited Adaptive Histogram Equalization (`cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))`) normalizes chamber lighting disparities before inference.
+3. **Model Architecture**: `train_model.py` utilizes **MobileNetV3-Small** with hard-swish non-linearities and squeeze-and-excitation blocks for maximum edge efficiency.
+4. **Quantization & Export**: Quantized to INT8 for microcontroller deployment via `convert_to_c_array.py` (`model_data.h`).
+5. **Inference Microservice**: `serve_model.py` provides FastAPI endpoints (`/health`, `/predict`, `/predict/camera`) with low-light CLAHE preprocessing.
 
 ---
 

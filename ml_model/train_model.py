@@ -1,7 +1,7 @@
 """
 AgriCold Vision — Freshness Classifier Training Script
 --------------------------------------------------------
-Trains a lightweight MobileNetV2-based classifier on the Kaggle
+Trains an optimized MobileNetV3-Small classifier on the Kaggle
 "Fruit Freshness Dataset v1", then exports an int8-quantized TFLite 
 model small enough to run on an ESP32-CAM via TensorFlow Lite for 
 Microcontrollers.
@@ -86,19 +86,19 @@ def build_datasets():
 
 
 def build_model():
-    """MobileNetV2 backbone (pretrained on ImageNet) + small classifier head.
-    alpha=0.35 keeps the model tiny — this is the smallest official
-    MobileNetV2 width multiplier, which matters for ESP32-CAM's ~4MB PSRAM."""
-    base = tf.keras.applications.MobileNetV2(
+    """MobileNetV3-Small backbone (pretrained on ImageNet) + classifier head.
+    MobileNetV3-Small delivers superior latency-accuracy trade-offs for embedded edge vision
+    using hard-swish activations and squeeze-and-excitation blocks tailored for microcontroller RAM."""
+    base = tf.keras.applications.MobileNetV3Small(
         input_shape=IMG_SIZE + (3,),
         include_top=False,
         weights="imagenet",
-        alpha=0.35,
+        minimalistic=False,
     )
     base.trainable = False  # freeze for initial training
 
     inputs = tf.keras.Input(shape=IMG_SIZE + (3,))
-    x = tf.keras.applications.mobilenet_v2.preprocess_input(inputs)
+    x = tf.keras.applications.mobilenet_v3.preprocess_input(inputs)
     x = base(x, training=False)
     x = layers.GlobalAveragePooling2D()(x)
     x = layers.Dropout(0.3)(x)
